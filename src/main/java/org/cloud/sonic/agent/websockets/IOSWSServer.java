@@ -56,6 +56,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;  // 添加这一行导入
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -182,6 +183,9 @@ public class IOSWSServer implements IIOSWSServer {
         errMsg.put("msg", "error");
         sendText(session, errMsg.toJSONString());
     }
+
+    // 在类中添加缓存
+    private static final Map<String, long[]> coordinateCache = new ConcurrentHashMap<>();
 
     @OnMessage
     public void onMessage(String message, Session session) {
@@ -366,20 +370,65 @@ public class IOSWSServer implements IIOSWSServer {
                             }
                         }
                         case "swipe" -> {
+                            long totalStart = System.currentTimeMillis();
+                            log.info("lucasysfeng, swipe started at: {}", totalStart);
+
                             if (iosDriver != null) {
-                                String xy1 = msg.getString("pointA");
-                                String xy2 = msg.getString("pointB");
-                                int x1 = Integer.parseInt(xy1.substring(0, xy1.indexOf(",")));
-                                int y1 = Integer.parseInt(xy1.substring(xy1.indexOf(",") + 1));
-                                int x2 = Integer.parseInt(xy2.substring(0, xy2.indexOf(",")));
-                                int y2 = Integer.parseInt(xy2.substring(xy2.indexOf(",") + 1));
                                 try {
-                                    iosDriver.swipe(x1, y1, x2, y2);
-                                } catch (SonicRespException e) {
-                                    e.printStackTrace();
+                                    String xy1 = msg.getString("pointA");
+                                    String xy2 = msg.getString("pointB");
+                                    String cacheKey = xy1 + "->" + xy2;
+
+                                    long parseStart = System.currentTimeMillis();
+
+                                    // 尝试从缓存获取坐标
+                                    long[] cachedCoords = coordinateCache.get(cacheKey);
+                                    int x1, y1, x2, y2;
+
+                                    if (cachedCoords != null) {
+                                        x1 = (int) cachedCoords[0];
+                                        y1 = (int) cachedCoords[1];
+                                        x2 = (int) cachedCoords[2];
+                                        y2 = (int) cachedCoords[3];
+                                        log.info("lucasysfeng, using cached coordinates");
+                                    } else {
+                                        String[] pointA = xy1.split(",");
+                                        String[] pointB = xy2.split(",");
+
+                                        x1 = Integer.parseInt(pointA[0]);
+                                        y1 = Integer.parseInt(pointA[1]);
+                                        x2 = Integer.parseInt(pointB[0]);
+                                        y2 = Integer.parseInt(pointB[1]);
+
+                                        // 缓存坐标
+                                        coordinateCache.put(cacheKey, new long[]{x1, y1, x2, y2});
+                                    }
+
+                                    long parseEnd = System.currentTimeMillis();
+                                    log.info("lucasysfeng, coordinates processed in {}ms", parseEnd - parseStart);
+
+                                    long swipeStart = System.currentTimeMillis();
+                                    log.info("lucasysfeng, executing swipe from ({},{}) to ({},{})", x1, y1, x2, y2);
+
+                                    // 执行滑动操作
+                                    int duration = msg.getInteger("duration") != null ? msg.getInteger("duration") : 500;
+                                    duration = Math.max(10, Math.min(duration, 2000));
+
+                                    iosDriver.swipe(x1, y1, x2, y2, duration);
+
+                                    long swipeEnd = System.currentTimeMillis();
+                                    log.info("lucasysfeng, swipe completed in {}ms with duration: {}ms",
+                                            swipeEnd - swipeStart, duration);
+
+                                } catch (Exception e) {
+                                    log.error("lucasysfeng, swipe error: ", e);
                                 }
                             }
+
+                            long totalEnd = System.currentTimeMillis();
+                            log.info("lucasysfeng, swipe total time: {}ms", totalEnd - totalStart);
                         }
+
                         case "keyEvent" -> {
                             if (iosDriver != null) {
                                 try {

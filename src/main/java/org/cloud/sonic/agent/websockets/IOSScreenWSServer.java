@@ -38,6 +38,8 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.ByteBuffer;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.concurrent.ScheduledFuture;
 
 import static org.cloud.sonic.agent.tools.BytesTool.sendByte;
@@ -115,16 +117,35 @@ public class IOSScreenWSServer implements IIOSWSServer {
             int i = 0;
             while (true) {
                 try {
+                    long readStart = System.currentTimeMillis();
+                    String readableReadTimeStart = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(readStart));
                     if ((bufferedImage = mjpegInputStream.readFrameForByteBuffer()) == null) break;
+                    long readEnd = System.currentTimeMillis();
+                    long readCost = readEnd - readStart;
+                    int imageSize = bufferedImage.remaining();
+                    String readableReadTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(readEnd));
+                    log.info("lucasysfeng, inputstream, start:{} end:{}, cost:{}ms, Image size:{} bytes",
+                            readableReadTimeStart, readableReadTime, readCost, imageSize);
                 } catch (IOException e) {
                     log.info(e.getMessage());
                     break;
                 }
                 i++;
+                long sendStart = System.currentTimeMillis();
                 if (i % 3 != 0) {
+                    long readStart = System.currentTimeMillis();
+                    String readableReadTimeStart = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(readStart));
                     sendByte(session, bufferedImage);
+                    long sendEnd = System.currentTimeMillis();
+                    String readableSendTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(sendEnd));
+                    long sendCost = sendEnd - sendStart;
+                    log.info("lucasysfeng, send begin:{}, end:{}, cost:{}ms, Frame index: {}",
+                            readableReadTimeStart, readableSendTime, sendCost, i);
                 } else {
                     i = 0;
+                    String readableSkipTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date());
+                    log.info("lucasysfeng, Frame skipped - Time: {}, Frame index: {}",
+                              readableSkipTime, i);
                 }
             }
             try {
