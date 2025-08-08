@@ -33,7 +33,12 @@ import org.cloud.sonic.agent.tools.BytesTool;
 import org.cloud.sonic.agent.tools.ScheduleTool;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import net.coobird.thumbnailator.Thumbnails;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -52,6 +57,8 @@ public class IOSScreenWSServer implements IIOSWSServer {
     private String key;
     @Value("${sonic.agent.port}")
     private int port;
+    @Value("${sonic.agent.skipframe:5}")
+    private int skipFrame;
 
     @OnOpen
     public void onOpen(Session session, @PathParam("key") String secretKey,
@@ -86,6 +93,7 @@ public class IOSScreenWSServer implements IIOSWSServer {
             return;
         }
         int finalScreenPort = screenPort;
+        log.info("lucasysfeng, udId: {}, screenPort: {}", udId, screenPort);
         new Thread(() -> {
             URL url;
             try {
@@ -114,7 +122,7 @@ public class IOSScreenWSServer implements IIOSWSServer {
                 }
             }
             ByteBuffer bufferedImage;
-            int i = 0;
+            int frameCount = 0;
             while (true) {
                 try {
                     long readStart = System.currentTimeMillis();
@@ -124,28 +132,24 @@ public class IOSScreenWSServer implements IIOSWSServer {
                     long readCost = readEnd - readStart;
                     int imageSize = bufferedImage.remaining();
                     String readableReadTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(readEnd));
-                    log.info("lucasysfeng, inputstream, start:{} end:{}, cost:{}ms, Image size:{} bytes",
-                            readableReadTimeStart, readableReadTime, readCost, imageSize);
+                    // log.info("lucasysfeng, inputstream, start:{} end:{}, cost:{}ms, Image size:{} bytes",
+                    //         readableReadTimeStart, readableReadTime, readCost, imageSize);
                 } catch (IOException e) {
                     log.info(e.getMessage());
                     break;
                 }
-                i++;
-                long sendStart = System.currentTimeMillis();
-                if (i % 3 != 0) {
+                // 通过跳过帧的方式来提高传输效率，根据配置决定每几帧传输1帧，默认每5帧传输1帧
+                frameCount++;
+                if (frameCount % skipFrame == 0) {
+                    long sendStart = System.currentTimeMillis();
                     long readStart = System.currentTimeMillis();
                     String readableReadTimeStart = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(readStart));
                     sendByte(session, bufferedImage);
                     long sendEnd = System.currentTimeMillis();
                     String readableSendTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(sendEnd));
                     long sendCost = sendEnd - sendStart;
-                    log.info("lucasysfeng, send begin:{}, end:{}, cost:{}ms, Frame index: {}",
-                            readableReadTimeStart, readableSendTime, sendCost, i);
-                } else {
-                    i = 0;
-                    String readableSkipTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date());
-                    log.info("lucasysfeng, Frame skipped - Time: {}, Frame index: {}",
-                              readableSkipTime, i);
+                    // log.info("lucasysfeng, send begin:{}, end:{}, cost:{}ms",
+                    //         readableReadTimeStart, readableSendTime, sendCost);
                 }
             }
             try {
@@ -189,6 +193,33 @@ public class IOSScreenWSServer implements IIOSWSServer {
                 e.printStackTrace();
             }
             log.info("{} : quit.", session.getUserProperties().get("id").toString());
+        }
+    }
+    
+    /**
+     * Compress image to reduce size for faster transmission
+     * @param imageBytes Original image bytes
+     * @return Compressed image bytes
+     */
+    private byte[] compressImage(byte[] imageBytes) {
+        try {
+            // Convert byte array to BufferedImage
+            ByteArrayInputStream bais = new ByteArrayInputStream(imageBytes);
+            BufferedImage image = ImageIO.read(bais);
+            
+            // Compress image with 50% quality
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            Thumbnails.of(image)
+                    .scale(1.0) // Keep original size
+                    .outputQuality(0.5) // 50% quality to reduce size
+                    .outputFormat("JPEG")
+                    .toOutputStream(baos);
+            
+            return baos.toByteArray();
+        } catch (IOException e) {
+            log.error("Failed to compress image", e);
+            // Return original image if compression fails
+            return imageBytes;
         }
     }
 }

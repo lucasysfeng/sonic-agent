@@ -36,6 +36,8 @@ public class MjpegInputStream extends DataInputStream {
     private final String CONTENT_LENGTH = "Content-Length".toLowerCase();
     private final static int HEADER_MAX_LENGTH = 100;
     private final static int FRAME_MAX_LENGTH = 1024 * 5 + HEADER_MAX_LENGTH;
+    // 用于存储上一帧的数据
+    private byte[] lastFrame = null;
 
     public MjpegInputStream(final InputStream in) {
         super(new BufferedInputStream(in, FRAME_MAX_LENGTH));
@@ -103,9 +105,33 @@ public class MjpegInputStream extends DataInputStream {
     }
 
     public ByteBuffer readFrameForByteBuffer() throws IOException {
+        // 尝试读取下一帧
+        ByteBuffer nextFrame = tryReadNextFrame();
+        
+        // 如果成功读取到新帧，则更新lastFrame并返回
+        if (nextFrame != null) {
+            lastFrame = new byte[nextFrame.remaining()];
+            nextFrame.get(lastFrame);
+            return ByteBuffer.wrap(lastFrame);
+        }
+        
+        // 如果没有读取到新帧但有上一帧数据，则返回上一帧
+        if (lastFrame != null) {
+            return ByteBuffer.wrap(lastFrame);
+        }
+        
+        // 如果既没有新帧也没有上一帧数据，则返回null
+        return null;
+    }
+    
+    private ByteBuffer tryReadNextFrame() throws IOException {
         mark(FRAME_MAX_LENGTH);
         int n = getStartOfSequence(this, SOI_MARKER);
         reset();
+        // 如果找不到SOI标记，说明没有新帧
+        if (n < 0) {
+            return null;
+        }
         final byte[] header = new byte[n];
         readFully(header);
         int length;
@@ -116,6 +142,7 @@ public class MjpegInputStream extends DataInputStream {
         }
         if (length == 0) {
             log.error("EOI Marker 0xFF,0xD9 not found!");
+            return null;
         }
         reset();
         final byte[] frame = new byte[length];
