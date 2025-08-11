@@ -72,6 +72,12 @@ public class IOSWSServer implements IIOSWSServer {
     private String key;
     @Value("${sonic.agent.port}")
     private int port;
+    @Value("${sonic.agent.framerate:60}")
+    private String framerate;
+    @Value("${sonic.agent.scalingfactor:100}")
+    private String scalingfactor;
+    @Value("${sonic.agent.screenshotquality:50}")
+    private String screenshotquality;
     @Autowired
     private AgentManagerTool agentManagerTool;
 

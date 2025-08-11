@@ -59,6 +59,8 @@ public class IOSScreenWSServer implements IIOSWSServer {
     private int port;
     @Value("${sonic.agent.skipframe:5}")
     private int skipFrame;
+    @Value("${sonic.agent.skipsameframe:10}")
+    private int skipSameFrame;
 
     @OnOpen
     public void onOpen(Session session, @PathParam("key") String secretKey,
@@ -101,6 +103,7 @@ public class IOSScreenWSServer implements IIOSWSServer {
             } catch (MalformedURLException e) {
                 return;
             }
+            log.info("lucasysfeng, udId: {}, url: {}", udId, url);
             MjpegInputStream mjpegInputStream = null;
             int waitMjpeg = 0;
             while (mjpegInputStream == null) {
@@ -123,33 +126,41 @@ public class IOSScreenWSServer implements IIOSWSServer {
             }
             ByteBuffer bufferedImage;
             int frameCount = 0;
+            int lastSendImageSize = 0;
+            int imageSize = 0;
+            long readCost = 0;
+            long readStart = 0;
+            long readEnd = 0;
+            int sameCount = 1;
             while (true) {
                 try {
-                    long readStart = System.currentTimeMillis();
-                    String readableReadTimeStart = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(readStart));
+                    readStart = System.currentTimeMillis();
                     if ((bufferedImage = mjpegInputStream.readFrameForByteBuffer()) == null) break;
-                    long readEnd = System.currentTimeMillis();
-                    long readCost = readEnd - readStart;
-                    int imageSize = bufferedImage.remaining();
-                    String readableReadTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(readEnd));
-                    // log.info("lucasysfeng, inputstream, start:{} end:{}, cost:{}ms, Image size:{} bytes",
-                    //         readableReadTimeStart, readableReadTime, readCost, imageSize);
+                    readEnd = System.currentTimeMillis();
+                    imageSize = bufferedImage.remaining();
                 } catch (IOException e) {
                     log.info(e.getMessage());
                     break;
                 }
+
+                // 跳过连续相同长度的帧, 最多跳过skipSameFrame帧
+                if ((imageSize == lastSendImageSize) && (sameCount % skipSameFrame != 0)) {
+                    sameCount++;
+                    continue;
+                }
+                sameCount = 1;
+
                 // 通过跳过帧的方式来提高传输效率，根据配置决定每几帧传输1帧，默认每5帧传输1帧
                 frameCount++;
                 if (frameCount % skipFrame == 0) {
+                    readCost = readEnd - readStart;
+                    lastSendImageSize = imageSize;
                     long sendStart = System.currentTimeMillis();
-                    long readStart = System.currentTimeMillis();
-                    String readableReadTimeStart = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(readStart));
                     sendByte(session, bufferedImage);
                     long sendEnd = System.currentTimeMillis();
-                    String readableSendTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(sendEnd));
                     long sendCost = sendEnd - sendStart;
-                    // log.info("lucasysfeng, send begin:{}, end:{}, cost:{}ms",
-                    //         readableReadTimeStart, readableSendTime, sendCost);
+                    // log.info("lucasysfeng, read cost:{}ms, send cost:{}ms, imagesize:{}bytes, url:{}",
+                    //         readCost, sendCost, imageSize, url);
                 }
             }
             try {
