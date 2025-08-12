@@ -90,6 +90,7 @@ public class ScrcpyInputSocketThread extends Thread {
     @Override
     public void run() {
         int scrcpyPort = PortTool.getPort();
+        log.info("lucasysfeng, android scrcpy port: {}", scrcpyPort);
         AndroidDeviceBridgeTool.forward(iDevice, scrcpyPort, "scrcpy");
         Socket videoSocket = new Socket();
         InputStream inputStream = null;

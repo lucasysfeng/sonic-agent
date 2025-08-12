@@ -23,6 +23,8 @@ import jakarta.websocket.*;
 import jakarta.websocket.server.PathParam;
 import jakarta.websocket.server.ServerEndpoint;
 import lombok.extern.slf4j.Slf4j;
+
+import org.checkerframework.checker.units.qual.s;
 import org.cloud.sonic.agent.bridge.ios.IOSDeviceLocalStatus;
 import org.cloud.sonic.agent.bridge.ios.IOSDeviceThreadPool;
 import org.cloud.sonic.agent.bridge.ios.SibTool;
@@ -73,11 +75,13 @@ public class IOSWSServer implements IIOSWSServer {
     @Value("${sonic.agent.port}")
     private int port;
     @Value("${sonic.agent.framerate:60}")
-    private String framerate;
+    private int framerate;
     @Value("${sonic.agent.scalingfactor:100}")
-    private String scalingfactor;
+    private int scalingfactor;
     @Value("${sonic.agent.screenshotquality:50}")
-    private String screenshotquality;
+    private int screenshotquality;
+    @Value("${sonic.agent.swipeduration:300}")
+    private int swipeduration;
     @Autowired
     private AgentManagerTool agentManagerTool;
 
@@ -152,9 +156,9 @@ public class IOSWSServer implements IIOSWSServer {
                 result.put("wda", ports[0]);
                 screenMap.put(udId, ports[1]);
                 JSONObject appiumSettings = new JSONObject();
-                appiumSettings.put("mjpegServerFramerate", 60);
-                appiumSettings.put("mjpegScalingFactor", 100);
-                appiumSettings.put("mjpegServerScreenshotQuality", 50);
+                appiumSettings.put("mjpegServerFramerate", framerate);
+                appiumSettings.put("mjpegScalingFactor", scalingfactor);
+                appiumSettings.put("mjpegServerScreenshotQuality", screenshotquality);
                 iosStepHandler.appiumSettings(appiumSettings);
                 HandlerMap.getIOSMap().put(udId, iosStepHandler);
             } catch (Exception e) {
@@ -417,7 +421,7 @@ public class IOSWSServer implements IIOSWSServer {
                                     log.info("lucasysfeng, executing swipe from ({},{}) to ({},{})", x1, y1, x2, y2);
 
                                     // 执行滑动操作
-                                    int duration = msg.getInteger("duration") != null ? msg.getInteger("duration") : 500;
+                                    int duration = msg.getInteger("duration") != null ? msg.getInteger("duration") : swipeduration;
                                     duration = Math.max(10, Math.min(duration, 2000));
 
                                     iosDriver.swipe(x1, y1, x2, y2, duration);
